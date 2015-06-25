@@ -6,11 +6,6 @@
 #include "ap_hooks.h"
 #include "mod_proxy.h"
 
-// inject_msdomain.load:
-//		LoadModule inject_msdomain_module /usr/lib/apache2/modules/mod_inject_msdomain.so
-// apache conf:
-// InjectMSDomain DOMAIN
-
 /*
  ==============================================================================
     Configuration Structure
@@ -40,6 +35,9 @@ static void   inject_msdomain_register_hooks(apr_pool_t *p);
  ==============================================================================
  */
 
+// Apache Directive:
+// InjectMSDomain DOMAIN
+
 static const command_rec directives[] =
 {
 	AP_INIT_TAKE1(
@@ -60,7 +58,8 @@ static const command_rec directives[] =
  ==============================================================================
  */
 
-module AP_MODULE_DECLARE_DATA inject_msdomain_module = {
+AP_DECLARE_MODULE(inject_msdomain) =
+{
     STANDARD20_MODULE_STUFF,
     inject_msdomain_create_dir_conf,    /* create per-dir    config structures */
     NULL,                               /* merge  per-dir    config structures */
@@ -70,6 +69,7 @@ module AP_MODULE_DECLARE_DATA inject_msdomain_module = {
     inject_msdomain_register_hooks      /* register hooks                      */
 };
 
+
 /*
  =======================================================================================================================
     Hook registration
@@ -78,7 +78,7 @@ module AP_MODULE_DECLARE_DATA inject_msdomain_module = {
 
 static void inject_msdomain_register_hooks(apr_pool_t *p)
 {
-     ap_hook_fixups(my_proxyfixups, NULL, NULL, APR_HOOK_MIDDLE);
+	ap_hook_fixups(my_proxyfixups, NULL, NULL, APR_HOOK_MIDDLE);
 }
 
 
