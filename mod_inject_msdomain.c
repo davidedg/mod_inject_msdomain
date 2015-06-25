@@ -109,19 +109,19 @@ static void* inject_msdomain_create_dir_conf(apr_pool_t* pool, char* context) {
 
 static int my_proxyfixups(request_rec *r)
 {
+	const static char *AuthType = "Authorization";
 	const char *t;
 	const char *sent_pw;
 	char *user;
 	char *d;
 	const char *auth_line;
-	char *AuthType = (PROXYREQ_PROXY == r->proxyreq) ? "Proxy-Authorization" : "Authorization";
 	
 	inject_msdomain_config *config = (inject_msdomain_config*) ap_get_module_config(r->per_dir_config, &inject_msdomain_module);
 
 	if (config->domain == NULL) { return DECLINED; } // InjectMSDomain is empty
 	
     auth_line = apr_table_get(r->headers_in, AuthType);
-	if (!auth_line) { return DECLINED; }		// No AUTH from client
+	if (!auth_line) { return DECLINED; }		// No AUTH sent from client
 
 	if (strcasecmp(ap_getword(r->pool, &auth_line, ' '), "Basic")) {
 		return DECLINED; }			// Get Auth TYPE
@@ -130,42 +130,44 @@ static int my_proxyfixups(request_rec *r)
 		         auth_line++;			// Skip blanks
 	}
 
-	t = ap_pbase64decode(r->pool, auth_line);	// Decode text
+	t = ap_pbase64decode(r->pool, auth_line);	// Decode BASE64 Authorization Header
 	user = ap_getword_nulls (r->pool, &t, ':');	// Break apart
 	sent_pw = t;					// User:Pwd
 
 
-     if( user == NULL || *user == '\0' )
-	{ return DECLINED; }				// No username
+    if( user == NULL || *user == '\0' ) { return DECLINED; } // No username
 
 
+	d = strstr(user, "@");  // Username in UPN format (user@domain)
+	if ( d != NULL)	{
+		ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "INJECT_MSDOMAIN: Username in UPN format: %s", user);
+		return DECLINED;
+	}
+
+	
 	d = strstr(user, "\\");
 	if (d != NULL) { // "\username" or "DOMAIN\username" or "\"
 		if ((d-user) > 1) { // "DOMAIN\username"
+			ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "INJECT_MSDOMAIN: Domain already present: %s", user);
 			return DECLINED;  // ignore if domain is already present
 		} else { // d-user == 1 ==> "\username" (some Androids)
-			ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0,r, "INJECT_MSDOMAIN: FIXING: %s to %s", user, user+1);
+			ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "INJECT_MSDOMAIN: FIXING: %s to %s", user, user+1);
 			user = user+1;
 		}
 	}
 		
-    ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0,r, "INJECT_MSDOMAIN: CONVERTING: %s to %s\\%s", user, config->domain, user);
-	
-	user = apr_pstrcat( r->pool, // INJECT MSDOMAIN IF NOT PRESENT
-		config->domain,
-		"\\",
-		user,
-		NULL);
-	
+    ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "INJECT_MSDOMAIN: CONVERTING: %s to %s\\%s", user, config->domain, user);
 	
 	auth_line = apr_pstrcat( r->pool,	// Create new Authorization Header:
-	"Basic ",							// "Basic base64encore(domain\user:pass)"
+	"Basic ",							// "Basic base64encode(domain\user:pass)"
 	ap_pbase64encode( r->pool,
 		 apr_pstrcat( r->pool,
-			 user,
-			 ":", 		
-			 sent_pw, 	
-			 NULL))
+			config->domain,				// INJECT MSDOMAIN
+			"\\",
+			user,
+			":", 		
+			sent_pw, 	
+			NULL))
 	, NULL);
 	
 	apr_table_set( r->headers_in , AuthType , auth_line );
