@@ -155,7 +155,20 @@ static int my_proxyfixups(request_rec *r)
 			user = user+1;
 		}
 	}
-		
+
+	d = strstr(user, "/"); // -- non-standard, but some clients misbehave!
+	if (d != NULL) { // "/username" or "DOMAIN/username" or "/"
+		if ((d-user) > 1) { // "DOMAIN/username"
+			ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "INJECT_MSDOMAIN: Domain already present: %s", user);
+			return DECLINED;  // ignore if domain is already present
+		} else { // d-user == 1 ==> "/username" (some Androids)
+			ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "INJECT_MSDOMAIN: FIXING: %s to %s", user, user+1);
+			user = user+1;
+		}
+	}
+
+
+	
     ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r, "INJECT_MSDOMAIN: CONVERTING: %s to %s\\%s", user, config->domain, user);
 	
 	auth_line = apr_pstrcat( r->pool,	// Create new Authorization Header:
